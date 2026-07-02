@@ -5,3 +5,9 @@ coverage
 .env
 .env.local
 *.log
+.local/
+.npm-cache/
+*.pid
+dev.api.pid
+dev.mongo-keeper.pid
+dev.web.pid
