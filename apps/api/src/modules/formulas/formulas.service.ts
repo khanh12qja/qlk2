@@ -27,7 +27,7 @@ export class FormulasService {
     });
 
     if (!formula) {
-      throw new NotFoundException("KhÃ´ng tÃ¬m tháº¥y cÃ´ng thá»©c");
+      throw new NotFoundException("Không tìm thấy công thức");
     }
 
     return formula;

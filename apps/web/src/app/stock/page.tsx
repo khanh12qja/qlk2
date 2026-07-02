@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, Fragment, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FormulaContract, GenerateBomResponseContract, MaterialContract } from "@erp/shared";
 import { Button } from "@/components/ui/button";
@@ -83,6 +83,12 @@ type FormulaCheckResult = {
   variantCode?: string;
 };
 
+type CutPlanRow = {
+  sourceLength: number;
+  cutLength: number;
+  leftoverLength: number;
+};
+
 type MaterialCheckResult = {
   materialId: string;
   materialCode: string;
@@ -93,6 +99,8 @@ type MaterialCheckResult = {
   availableQuantity: number;
   enough: boolean;
   sources: string[];
+  cutNotice?: string;
+  cutPlan?: CutPlanRow[];
 };
 
 type FormulaStockCheckResponse = {
@@ -369,7 +377,9 @@ export default function StockPage() {
               requiredLength: item.requiredLength,
               availableQuantity: suitable.suitableCount,
               enough: suitable.enoughQuantity,
-              sources: item.sources
+              sources: item.sources,
+              cutNotice: buildCutNotice(suitable),
+              cutPlan: buildCutPlanRows(suitable)
             };
           }
 
@@ -517,6 +527,7 @@ export default function StockPage() {
   const totalWarehouseCount = warehouses.length;
   const totalMaterialCount = materials.length;
   const totalFormulaCount = formulas.length;
+  const cutNoticeRows = checkFormulaStock.data?.materialChecks.filter((item) => item.cutNotice) ?? [];
 
   return (
     <div className="space-y-6">
@@ -973,6 +984,7 @@ export default function StockPage() {
                     <th className="px-4 py-3 font-medium">Cần xuất</th>
                     <th className="px-4 py-3 font-medium">Tồn hiện có</th>
                     <th className="px-4 py-3 font-medium">Còn thiếu</th>
+                    <th className="px-4 py-3 font-medium">Gợi ý cắt</th>
                     <th className="px-4 py-3 font-medium">Kết quả</th>
                     <th className="px-4 py-3 font-medium">Nguồn công thức</th>
                   </tr>
@@ -986,18 +998,59 @@ export default function StockPage() {
                       <td className="px-4 py-3 text-muted">{item.requiredQuantity}</td>
                       <td className="px-4 py-3 text-muted">{item.availableQuantity}</td>
                       <td className="px-4 py-3 text-muted">{Math.max(item.requiredQuantity - item.availableQuantity, 0)}</td>
+                      <td className="px-4 py-3 text-muted">{item.cutNotice ?? "-"}</td>
                       <td className={`px-4 py-3 font-medium ${item.enough ? "text-[#24543a]" : "text-[#9a3412]"}`}>{item.enough ? "Đủ" : "Thiếu"}</td>
                       <td className="px-4 py-3 text-muted">{item.sources.join(", ")}</td>
                     </tr>
                   ))}
                   {checkFormulaStock.data.materialChecks.length === 0 && (
                     <tr>
-                      <td className="px-4 py-4 text-muted" colSpan={8}>Không có vật tư nào được sinh ra từ công thức.</td>
+                      <td className="px-4 py-4 text-muted" colSpan={9}>Không có vật tư nào được sinh ra từ công thức.</td>
                     </tr>
                   )}
                 </tbody>
               </table>
             </div>
+
+            {cutNoticeRows.length > 0 && (
+              <div className="overflow-hidden rounded-lg border border-line">
+                <div className="border-b border-line bg-[#f8faf7] px-4 py-3 text-sm font-medium text-ink">Bang goi y cat thanh</div>
+                <table className="w-full border-collapse text-sm">
+                  <thead className="bg-[#eef2ed] text-left text-muted">
+                    <tr>
+                      <th className="px-4 py-3 font-medium">Vật tư</th>
+                      <th className="px-4 py-3 font-medium">Thanh tồn</th>
+                      <th className="px-4 py-3 font-medium">Cần cắt</th>
+                      <th className="px-4 py-3 font-medium">Còn dư</th>
+                      <th className="px-4 py-3 font-medium">Ghi chu</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cutNoticeRows.map((item) => (
+                      <Fragment key={`${item.materialId}-${item.requiredLength ?? "qty"}-cut`}>
+                        <tr className="border-t border-line bg-[#fbfcfa]">
+                          <td className="px-4 py-3 font-medium text-ink">{item.materialCode} - {item.materialName}</td>
+                          <td className="px-4 py-3 text-muted" colSpan={3}>
+                            Cần {item.requiredQuantity} thanh, hiện cắt được {item.cutPlan?.length ?? 0} thanh.
+                          </td>
+                        </tr>
+                        {(item.cutPlan ?? []).map((plan, index) => (
+                          <tr key={`${item.materialId}-${item.requiredLength ?? "qty"}-${index}`} className="border-t border-line">
+                            <td className="px-4 py-3 text-muted">Thanh {index + 1}</td>
+                            <td className="px-4 py-3 text-muted">{plan.sourceLength}</td>
+                            <td className="px-4 py-3 text-muted">{plan.cutLength}</td>
+                            <td className="px-4 py-3 text-muted">{plan.leftoverLength}</td>
+                            <td className="px-4 py-3 text-muted">
+                              {plan.leftoverLength > 0 ? `Cat ${plan.cutLength}, du ${formatLengthAsCentimeters(plan.leftoverLength)}` : "Cat vua du"}
+                            </td>
+                          </tr>
+                        ))}
+                      </Fragment>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
       </Card>
@@ -1452,6 +1505,75 @@ function buildProductCatalogSummaries(data: ProductCatalogResponse, formula?: Pi
   }
 
   return Array.from(grouped.values());
+}
+
+function buildCutNotice(suitable: SuitableResponse) {
+  if (suitable.requiredLength <= 0 || suitable.requiredQuantity <= 0) {
+    return undefined;
+  }
+
+  const targetQuantity = suitable.enoughQuantity
+    ? suitable.requiredQuantity
+    : Math.min(suitable.requiredQuantity, suitable.suitableCount);
+  const selectedBars = selectBarsForCut(suitable.bars, targetQuantity);
+  if (selectedBars.length === 0) {
+    return undefined;
+  }
+
+  const totalLeftover = selectedBars.reduce((sum, length) => sum + Math.max(length - suitable.requiredLength, 0), 0);
+  const sample = selectedBars
+    .slice(0, 3)
+    .map((length) => `${length} -> du ${formatLengthAsCentimeters(length - suitable.requiredLength)}`)
+    .join('; ');
+  const moreCount = selectedBars.length - Math.min(selectedBars.length, 3);
+
+  if (!suitable.enoughQuantity) {
+    return `Chưa đủ số thanh. Hiện có ${selectedBars.length}/${suitable.requiredQuantity} thanh có thể cắt, dự kiến cắt bỏ ${formatLengthAsCentimeters(totalLeftover)}. ${sample}${moreCount > 0 ? `; và ${moreCount} thanh khác` : ""}`;
+  }
+
+  if (totalLeftover <= 0) {
+    return "Cat vua du, khong du.";
+  }
+
+  return `Đủ nhờ cắt thanh dài hơn. Cần cắt bỏ tổng ${formatLengthAsCentimeters(totalLeftover)} trên ${selectedBars.length} thanh. ${sample}${moreCount > 0 ? `; và ${moreCount} thanh khác` : ""}`;
+}
+
+function buildCutPlanRows(suitable: SuitableResponse) {
+  if (suitable.requiredLength <= 0 || suitable.requiredQuantity <= 0) {
+    return [];
+  }
+
+  const targetQuantity = suitable.enoughQuantity
+    ? suitable.requiredQuantity
+    : Math.min(suitable.requiredQuantity, suitable.suitableCount);
+
+  return selectBarsForCut(suitable.bars, targetQuantity).map((sourceLength) => ({
+    sourceLength,
+    cutLength: suitable.requiredLength,
+    leftoverLength: Math.max(sourceLength - suitable.requiredLength, 0)
+  }));
+}
+
+function selectBarsForCut(bars: SuitableBar[], requiredQuantity: number) {
+  const selected: number[] = [];
+
+  for (const bar of bars) {
+    const count = Math.max(bar.quantity ?? 0, 0);
+    for (let index = 0; index < count && selected.length < requiredQuantity; index += 1) {
+      selected.push(bar.remainingLength);
+    }
+    if (selected.length >= requiredQuantity) {
+      break;
+    }
+  }
+
+  return selected;
+}
+
+function formatLengthAsCentimeters(length: number) {
+  const centimeters = length / 10;
+  const rounded = Number.isInteger(centimeters) ? centimeters.toFixed(0) : centimeters.toFixed(1);
+  return `${rounded} cm`;
 }
 
 function normalizeCode(value: string) {

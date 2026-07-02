@@ -214,21 +214,22 @@ try {
         status: "active"
       }))
     ),
-    items: colors.flatMap((color) => [
+    items: [
       {
-        lineCode: `GIAM_CHAN_${color.code}`,
+        lineCode: "GIAM_CHAN_CHUNG",
         materialId: materialMap.get("DAMPER_COMMON")._id,
         description: "Giam chan dung chung",
         quantityExpression: "1",
-        conditionExpression: `MAU==${color.code}`,
+        conditionExpression: "",
         wasteRate: 0
       },
-      {
-        lineCode: `THANH_QUAY_${color.code}`,
-        materialId: materialMap.get(`BAR_QUAY_${color.code}`)._id,
-        description: `Thanh dung mo quay ${color.label.toLowerCase()}`,
-        lengthExpression: "CHIEU_CAO",
-        quantityExpression: "2",
+      ...colors.flatMap((color) => [
+        {
+          lineCode: `THANH_QUAY_${color.code}`,
+          materialId: materialMap.get(`BAR_QUAY_${color.code}`)._id,
+          description: `Thanh dung mo quay ${color.label.toLowerCase()}`,
+          lengthExpression: "CHIEU_CAO",
+          quantityExpression: "2",
         conditionExpression: `MAU==${color.code} && KIEU_MO==QUAY`,
         wasteRate: 0
       },
@@ -249,15 +250,16 @@ try {
         conditionExpression: `MAU==${color.code} && KIEU_MO==TRUOT`,
         wasteRate: 0
       },
-      {
-        lineCode: `BAN_LE_TRUOT_${color.code}`,
-        materialId: materialMap.get(`HINGE_TRUOT_${color.code}`)._id,
-        description: `Ban le mo truot ${color.label.toLowerCase()}`,
-        quantityExpression: "2",
-        conditionExpression: `MAU==${color.code} && KIEU_MO==TRUOT`,
-        wasteRate: 0
-      }
-    ]),
+        {
+          lineCode: `BAN_LE_TRUOT_${color.code}`,
+          materialId: materialMap.get(`HINGE_TRUOT_${color.code}`)._id,
+          description: `Ban le mo truot ${color.label.toLowerCase()}`,
+          quantityExpression: "2",
+          conditionExpression: `MAU==${color.code} && KIEU_MO==TRUOT`,
+          wasteRate: 0
+        }
+      ])
+    ],
     status: "active",
     createdAt: now,
     updatedAt: now
@@ -297,7 +299,7 @@ try {
   await db.collection("stock_bars").insertMany(barStocks);
 
   const quantityStocks = [
-    { key: "DAMPER_COMMON", qty: 30 },
+    { key: "DAMPER_COMMON", qty: 5 },
     { key: "HINGE_QUAY_DEN", qty: 10 },
     { key: "HINGE_TRUOT_DEN", qty: 12 },
     { key: "HINGE_QUAY_VANG", qty: 8 },

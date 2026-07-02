@@ -103,7 +103,7 @@ export default function FormulasPage() {
       await queryClient.invalidateQueries({ queryKey: ["formulas"] });
     },
     onError: (error) => {
-      setMessage(error instanceof Error ? error.message : "Khong luu duoc cong thuc.");
+      setMessage(error instanceof Error ? error.message : "Không lưu được công thức.");
     }
   });
 
@@ -112,7 +112,7 @@ export default function FormulasPage() {
     setMessage(null);
 
     if (parameters.some((parameter) => parameter.type === "select" && parameter.options.length === 0)) {
-      setMessage("Tham so kieu danh sach phai co it nhat mot lua chon.");
+      setMessage("Tham số kiểu danh sách phải có ít nhất một lựa chọn.");
       return;
     }
 
@@ -193,10 +193,10 @@ export default function FormulasPage() {
             </p>
           </div>
           <div className="grid flex-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <MetricCard label="Cong thuc" value={String(data.length)} note="Tong cong thuc dang co" />
-            <MetricCard label="Tham so" value={String(totalParameters)} note="Khai bao tren tat ca cong thuc" />
-            <MetricCard label="Bien the" value={String(totalVariants)} note="Gia tri co san de tao bo" />
-            <MetricCard label="Dong BOM" value={String(totalItems)} note="Tong dong vat tu da cau hinh" />
+            <MetricCard label="Công thức" value={String(data.length)} note="Tổng công thức đang có" />
+            <MetricCard label="Tham số" value={String(totalParameters)} note="Khai báo trên tất cả công thức" />
+            <MetricCard label="Biến thể" value={String(totalVariants)} note="Giá trị có sẵn để tạo bộ" />
+            <MetricCard label="Dòng BOM" value={String(totalItems)} note="Tổng dòng vật tư đã cấu hình" />
           </div>
         </div>
       </div>
@@ -210,9 +210,9 @@ export default function FormulasPage() {
           />
         <form className="space-y-5" onSubmit={submit}>
           <div className="grid gap-3 md:grid-cols-4">
-            <StepCard step="1" title="Thong tin chung" description="Ma va ten bo san pham." />
-            <StepCard step="2" title="Tham so" description="Khai bao chieu cao, mau, kieu mo..." />
-            <StepCard step="3" title="Bien the" description="Gom nhung gia tri co san de nhan vien chon nhanh." />
+            <StepCard step="1" title="Thông tin chung" description="Mã và tên bộ sản phẩm." />
+            <StepCard step="2" title="Tham số" description="Khai báo chiều cao, màu, kiểu mở..." />
+            <StepCard step="3" title="Biến thể" description="Gồm những giá trị có sẵn để nhân viên chọn nhanh." />
             <StepCard step="4" title="Dong vat tu" description="Gan BOM theo tung dieu kien va kich thuoc." />
           </div>
 
@@ -228,7 +228,7 @@ export default function FormulasPage() {
           </div>
 
           <SectionHeader
-            title="Tham so"
+            title="Tham số"
             description="Day la nhung gia tri nhan vien se nhap hoac chon khi tinh bo. Vi du: CHIEU_CAO, MAU, KIEU_MO."
             action="Them tham so"
             count={parameters.length}
@@ -239,17 +239,17 @@ export default function FormulasPage() {
             {parameters.map((parameter, index) => (
               <div key={index} className="space-y-3 rounded-md border border-line bg-white p-3">
                 <div className="flex items-center justify-between gap-3">
-                  <div className="text-sm font-medium text-ink">Tham so {index + 1}</div>
+                  <div className="text-sm font-medium text-ink">Tham số {index + 1}</div>
                   <div className="text-xs text-muted">{parameter.label || parameter.code || "Chua dat ten"}</div>
                 </div>
                 <div className="grid gap-3 md:grid-cols-5">
-                  <input placeholder="Ma, vi du MAU" value={parameter.code} onChange={(event) => updateParameter(index, { code: normalizeCode(event.target.value) })} className="h-10 rounded-md border border-line px-3 text-sm" required />
+                  <input placeholder="Mã, ví dụ MAU" value={parameter.code} onChange={(event) => updateParameter(index, { code: normalizeCode(event.target.value) })} className="h-10 rounded-md border border-line px-3 text-sm" required />
                   <input placeholder="Ten, vi du Mau" value={parameter.label} onChange={(event) => updateParameter(index, { label: event.target.value })} className="h-10 rounded-md border border-line px-3 text-sm" required />
                   <select value={parameter.type} onChange={(event) => changeParameterType(index, event.target.value as ParameterRow["type"])} className="h-10 rounded-md border border-line px-3 text-sm">
                     <option value="number">So</option>
                     <option value="text">Chu</option>
                     <option value="select">Danh sach</option>
-                    <option value="boolean">Co/khong</option>
+                    <option value="boolean">Có/không</option>
                   </select>
                   <label className="flex items-center gap-2 text-sm text-ink">
                     <input type="checkbox" checked={parameter.required} onChange={(event) => updateParameter(index, { required: event.target.checked })} />
@@ -266,7 +266,7 @@ export default function FormulasPage() {
                     </div>
                     {parameter.options.map((option, optionIndex) => (
                       <div key={optionIndex} className="grid gap-3 md:grid-cols-[1fr_1fr_auto]">
-                        <input placeholder="Ma, vi du DEN" value={option.code} onChange={(event) => updateParameterOption(index, optionIndex, { code: normalizeCode(event.target.value) })} className="h-10 rounded-md border border-line px-3 text-sm" required />
+                        <input placeholder="Mã, ví dụ DEN" value={option.code} onChange={(event) => updateParameterOption(index, optionIndex, { code: normalizeCode(event.target.value) })} className="h-10 rounded-md border border-line px-3 text-sm" required />
                         <input placeholder="Ten hien thi, vi du Den" value={option.label} onChange={(event) => updateParameterOption(index, optionIndex, { label: event.target.value })} className="h-10 rounded-md border border-line px-3 text-sm" required />
                         <Button type="button" variant="secondary" onClick={() => removeParameterOption(index, optionIndex)}>Xoa</Button>
                       </div>
@@ -278,8 +278,8 @@ export default function FormulasPage() {
           </div>
 
           <SectionHeader
-            title="Bien the"
-            description="Bien the la tap gia tri co san de tao nhanh tung bo cu the, khong can tao nhieu cong thuc."
+            title="Biến thể"
+            description="Biến thể là tập giá trị có sẵn để tạo nhanh từng bộ cụ thể, không cần tạo nhiều công thức."
             action="Them bien the"
             count={variants.length}
             onClick={() => setVariants((current) => [...current, { values: [{ parameterCode: "", value: "" }] }])}
@@ -289,14 +289,14 @@ export default function FormulasPage() {
             {variants.map((variant, index) => (
               <div key={index} className="space-y-3 rounded-md border border-line bg-white p-3">
                 <div className="flex items-center justify-between gap-3">
-                  <div className="text-sm font-medium text-ink">Bien the {index + 1}</div>
+                  <div className="text-sm font-medium text-ink">Biến thể {index + 1}</div>
                   <Button type="button" variant="secondary" onClick={() => setVariants((current) => current.filter((_, rowIndex) => rowIndex !== index))}>Xoa bien the</Button>
                 </div>
 
                 <div className="grid gap-3 md:grid-cols-2">
                   <div className="rounded-md border border-line bg-[#f7f8f5] px-3 py-2">
                     <div className="text-xs text-muted">Ma bien the tu sinh</div>
-                    <div className="mt-1 text-sm font-medium text-ink">{buildVariantCode(variant, code) || "Chua co"}</div>
+                    <div className="mt-1 text-sm font-medium text-ink">{buildVariantCode(variant, code) || "Chưa có"}</div>
                   </div>
                   <div className="rounded-md border border-line bg-[#f7f8f5] px-3 py-2">
                     <div className="text-xs text-muted">Ten bien the tu sinh</div>
@@ -331,7 +331,7 @@ export default function FormulasPage() {
 
           <SectionHeader
             title="Dong vat tu"
-            description="Moi dong la 1 vat tu trong BOM. Co the gan theo tham so chieu dai va dieu kien mau, kieu mo..."
+            description="Mỗi dòng là 1 vật tư trong BOM. Có thể gắn theo tham số chiều dài và điều kiện màu, kiểu mở..."
             action="Them dong vat tu"
             count={items.length}
             onClick={() => setItems((current) => [...current, { lineCode: "", materialId: "", description: "", lengthExpression: "", quantityExpression: "", conditionExpression: "", wasteRate: "" }])}
@@ -356,11 +356,11 @@ export default function FormulasPage() {
               <div key={index} className="space-y-4 rounded-lg border border-line bg-white p-4 shadow-sm">
                 <div className="flex items-center justify-between gap-3">
                   <div className="space-y-1">
-                    <div className="text-sm font-medium text-ink">Dong BOM {index + 1}</div>
+                  <div className="text-sm font-medium text-ink">Dòng BOM {index + 1}</div>
                     <div className="flex flex-wrap gap-2 text-xs text-muted">
-                      <span className="rounded-full bg-[#f3f5ef] px-2 py-1">Vat tu</span>
-                      <span className="rounded-full bg-[#f3f5ef] px-2 py-1">Chieu dai</span>
-                      <span className="rounded-full bg-[#f3f5ef] px-2 py-1">So luong va dieu kien</span>
+                      <span className="rounded-full bg-[#f3f5ef] px-2 py-1">Vật tư</span>
+                      <span className="rounded-full bg-[#f3f5ef] px-2 py-1">Chiều dài</span>
+                      <span className="rounded-full bg-[#f3f5ef] px-2 py-1">Số lượng và điều kiện</span>
                     </div>
                   </div>
                   <Button type="button" variant="secondary" onClick={() => setItems((current) => current.filter((_, rowIndex) => rowIndex !== index))}>Xoa</Button>
@@ -372,7 +372,7 @@ export default function FormulasPage() {
                     description="Day la nhom xac dinh dong BOM nay dang tro den vat tu nao va mo ta no la gi."
                   />
                   <div className="grid gap-3 md:grid-cols-3">
-                    <input placeholder="Ma dong" value={item.lineCode} onChange={(event) => updateItem(index, { lineCode: normalizeCode(event.target.value) })} className="h-10 rounded-md border border-line px-3 text-sm" required />
+                    <input placeholder="Mã dòng" value={item.lineCode} onChange={(event) => updateItem(index, { lineCode: normalizeCode(event.target.value) })} className="h-10 rounded-md border border-line px-3 text-sm" required />
                     <select value={item.materialId} onChange={(event) => updateItem(index, { materialId: event.target.value })} className="h-10 rounded-md border border-line px-3 text-sm" required>
                       <option value="">Chon vat tu</option>
                       {materials.map((material) => (
@@ -392,7 +392,7 @@ export default function FormulasPage() {
                     <label className="space-y-2">
                       <span className="text-xs text-muted">Gan truc tiep vao tham so chieu dai</span>
                       <select value={parameters.some((parameter) => parameter.code === item.lengthExpression) ? item.lengthExpression : ""} onChange={(event) => updateItem(index, { lengthExpression: event.target.value })} className="h-10 w-full rounded-md border border-line px-3 text-sm">
-                        <option value="">Khong gan truc tiep</option>
+                        <option value="">Không gắn trực tiếp</option>
                         {parameters.map((parameter) => (
                           <option key={parameter.code} value={parameter.code}>{parameter.label || parameter.code} ({parameter.code})</option>
                         ))}
@@ -407,7 +407,7 @@ export default function FormulasPage() {
 
                 <div className="space-y-3 rounded-lg border border-line bg-[#fcfcfa] p-4">
                   <FieldGroupTitle
-                    title="So luong va dieu kien ap dung"
+                    title="Số lượng và điều kiện áp dụng"
                     description="Cau hinh so luong lay ra, dieu kien de dong nay xuat hien trong BOM va muc hao hut neu co."
                   />
                   <div className="grid gap-3 md:grid-cols-3">
@@ -418,7 +418,7 @@ export default function FormulasPage() {
                 </div>
 
                 <div className="rounded-md bg-[#f7f8f5] px-3 py-2 text-xs text-muted">
-                  Goi y: neu vat tu nay ap dung cho tat ca cac bo thi de trong dieu kien. Neu chi dung cho mot mau hoac mot kieu mo, nhap dieu kien o tren.
+                  Gợi ý: nếu vật tư này áp dụng cho tất cả các bộ thì để trống điều kiện. Nếu chỉ dùng cho một màu hoặc một kiểu mở, nhập điều kiện ở trên.
                 </div>
               </div>
             ))}
@@ -436,14 +436,14 @@ export default function FormulasPage() {
           <Card className="border-line p-6">
             <SectionIntro
               eyebrow="Tom tat"
-              title="Nguyen tac cau hinh"
-              description="Khong doi nghiep vu. Chi nhac lai thu tu thao tac de nguoi nhap lieu di nhanh va it nham hon."
+              title="Nguyên tắc cấu hình"
+              description="Không đổi nghiệp vụ. Chỉ nhắc lại thứ tự thao tác để người nhập liệu đi nhanh và ít nhầm hơn."
             />
             <div className="mt-5 space-y-3">
-              <InfoRow title="1. Thong tin chung" description="Khai bao ma va ten cong thuc truoc de sinh ma bien the on dinh." />
-              <InfoRow title="2. Tham so" description="Khai bao cac gia tri dau vao nhu MAU, KIEU_MO, CHIEU_CAO." />
-              <InfoRow title="3. Bien the" description="Chon cac to hop gia tri co san, khong can tao nhieu cong thuc rieng." />
-              <InfoRow title="4. Dong BOM" description="Gan vat tu, so luong, dieu kien va bieu thuc chieu dai cho tung dong." />
+              <InfoRow title="1. Thông tin chung" description="Khai báo mã và tên công thức trước để sinh mã biến thể ổn định." />
+              <InfoRow title="2. Tham số" description="Khai báo các giá trị đầu vào như MAU, KIEU_MO, CHIEU_CAO." />
+              <InfoRow title="3. Biến thể" description="Chọn các tổ hợp giá trị có sẵn, không cần tạo nhiều công thức riêng." />
+              <InfoRow title="4. Dòng BOM" description="Gắn vật tư, số lượng, điều kiện và biểu thức chiều dài cho từng dòng." />
             </div>
           </Card>
 
@@ -451,7 +451,7 @@ export default function FormulasPage() {
             <SectionIntro
               eyebrow="Thu vien"
               title="Danh sach cong thuc"
-              description="Tat ca cong thuc da co trong he thong. Co the xem nhanh tham so, bien the va so dong BOM truoc khi sua."
+              description="Tất cả công thức đã có trong hệ thống. Có thể xem nhanh tham số, biến thể và số dòng BOM trước khi sửa."
             />
             <div className="mt-5 grid gap-4">
               {isLoading && <Card className="border-line p-4 text-sm text-muted">Dang tai...</Card>}
@@ -469,9 +469,9 @@ export default function FormulasPage() {
                     </div>
                   </div>
                   <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                    <MiniStat label="Tham so" value={String(formula.parameters.length)} detail={formula.parameters.map((item) => item.label || item.code).join(", ") || "Khong co"} />
-                    <MiniStat label="Bien the" value={String(formula.variants.length)} detail={formula.variants.map((item) => item.name).join(", ") || "Khong co"} />
-                    <MiniStat label="Dong BOM" value={String(formula.items.length)} detail={`${formula.items.length} dong vat tu`} />
+                    <MiniStat label="Tham số" value={String(formula.parameters.length)} detail={formula.parameters.map((item) => item.label || item.code).join(", ") || "Không có"} />
+                    <MiniStat label="Biến thể" value={String(formula.variants.length)} detail={formula.variants.map((item) => item.name).join(", ") || "Không có"} />
+                    <MiniStat label="Dòng BOM" value={String(formula.items.length)} detail={`${formula.items.length} dòng vật tư`} />
                   </div>
                 </Card>
               ))}
@@ -550,7 +550,7 @@ function VariantValueInput({ parameter, value, onChange }: { parameter?: Paramet
   if (parameter?.type === "select") {
     return (
       <select value={value} onChange={(event) => onChange(event.target.value)} className="h-10 rounded-md border border-line px-3 text-sm" required>
-        <option value="">Chon gia tri</option>
+        <option value="">Chọn giá trị</option>
         {parameter.options.map((option) => (
           <option key={option.code} value={option.code}>{option.label}</option>
         ))}
@@ -561,14 +561,14 @@ function VariantValueInput({ parameter, value, onChange }: { parameter?: Paramet
   if (parameter?.type === "boolean") {
     return (
       <select value={value} onChange={(event) => onChange(event.target.value)} className="h-10 rounded-md border border-line px-3 text-sm" required>
-        <option value="">Chon gia tri</option>
-        <option value="true">Co</option>
-        <option value="false">Khong</option>
+        <option value="">Chọn giá trị</option>
+        <option value="true">Có</option>
+        <option value="false">Không</option>
       </select>
     );
   }
 
-  return <input placeholder="Gia tri" value={value} onChange={(event) => onChange(parameter?.type === "number" ? event.target.value : normalizeCode(event.target.value))} className="h-10 rounded-md border border-line px-3 text-sm" required />;
+  return <input placeholder="Giá trị" value={value} onChange={(event) => onChange(parameter?.type === "number" ? event.target.value : normalizeCode(event.target.value))} className="h-10 rounded-md border border-line px-3 text-sm" required />;
 }
 
 function SectionHeader({
@@ -698,7 +698,7 @@ function buildVariantName(variant: VariantRow, parameters: ParameterRow[], formu
         return option.label;
       }
       if (parameter?.type === "boolean") {
-        return item.value === "true" ? "Co" : "Khong";
+        return item.value === "true" ? "Có" : "Không";
       }
       return item.value;
     });

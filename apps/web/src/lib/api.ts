@@ -1,7 +1,27 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4005/api";
 
+function resolveApiBaseUrl() {
+  if (typeof window === "undefined") {
+    return API_BASE_URL;
+  }
+
+  try {
+    const url = new URL(API_BASE_URL);
+    const isLocalApiHost = url.hostname === "localhost" || url.hostname === "127.0.0.1";
+    const isLanClient = window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1";
+
+    if (isLocalApiHost && isLanClient) {
+      url.hostname = window.location.hostname;
+    }
+
+    return url.toString().replace(/\/$/, "");
+  } catch {
+    return API_BASE_URL;
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await fetch(`${resolveApiBaseUrl()}${path}`, {
     ...init,
     headers: {
       "Content-Type": "application/json",
