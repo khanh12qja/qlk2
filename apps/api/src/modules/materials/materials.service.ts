@@ -4,13 +4,18 @@ import { Model } from "mongoose";
 import { CreateMaterialDto } from "./dto/create-material.dto";
 import { UpdateMaterialDto } from "./dto/update-material.dto";
 import { Material } from "./schemas/material.schema";
+import { Dictionary } from "../dictionaries/schemas/dictionary.schema";
 
 @Injectable()
 export class MaterialsService {
-  constructor(@InjectModel(Material.name) private readonly materialModel: Model<Material>) {}
+  constructor(
+    @InjectModel(Material.name) private readonly materialModel: Model<Material>,
+    @InjectModel(Dictionary.name) private readonly dictionaryModel: Model<Dictionary>
+  ) {}
 
   async create(dto: CreateMaterialDto) {
-    const manageLength = this.isLengthManagedUnit(dto.unit);
+    const unit = await this.resolveCategoryUnit(dto.category, dto.unit);
+    const manageLength = this.isLengthManagedUnit(unit);
     if (manageLength && !dto.standardLength) {
       throw new BadRequestException("Chieu dai chuan la bat buoc khi vat tu tinh theo thanh");
     }
@@ -26,7 +31,9 @@ export class MaterialsService {
         code: materialCode,
         baseCode,
         category: dto.category.trim().toUpperCase(),
-        unit: dto.unit.trim().toUpperCase(),
+        unit,
+        useGlass: dto.useGlass ?? false,
+        glassType: this.normalizeGlassType(dto.glassType),
         manageLength,
         standardLength: manageLength ? dto.standardLength : undefined,
         colorCode,
@@ -56,13 +63,14 @@ export class MaterialsService {
       throw new NotFoundException("Khong tim thay vat tu");
     }
 
-    const manageLength = dto.unit ? this.isLengthManagedUnit(dto.unit) : dto.manageLength ?? existing.manageLength;
+    const category = dto.category?.trim().toUpperCase() ?? existing.category;
+    const unit = await this.resolveCategoryUnit(category, dto.unit ?? (dto.category ? undefined : existing.unit));
+    const manageLength = this.isLengthManagedUnit(unit);
     const standardLength = manageLength ? dto.standardLength ?? existing.standardLength : undefined;
     if (manageLength && !standardLength) {
       throw new BadRequestException("Chieu dai chuan la bat buoc khi vat tu tinh theo thanh");
     }
 
-    const category = dto.category?.trim().toUpperCase() ?? existing.category;
     const baseCode = this.normalizeCode(dto.baseCode ?? existing.baseCode ?? this.extractBaseCode(existing.code, existing.category, existing.colorCode));
     const colorCode = dto.colorCode === undefined
       ? existing.colorCode
@@ -71,12 +79,15 @@ export class MaterialsService {
         : undefined;
     const materialCode = this.buildMaterialCode(this.normalizeCode(category), baseCode, colorCode ? this.normalizeCode(colorCode) : undefined);
 
+    const useGlass = dto.useGlass ?? existing.useGlass ?? Boolean(existing.glassType);
     const payload = {
       ...dto,
       code: materialCode,
       baseCode,
       category,
-      unit: dto.unit?.trim().toUpperCase(),
+      unit,
+      useGlass,
+      glassType: this.normalizeGlassType(dto.glassType ?? existing.glassType),
       manageLength,
       colorCode: colorCode || undefined,
       colorName: dto.colorName?.trim() || undefined,
@@ -95,6 +106,24 @@ export class MaterialsService {
 
   private isLengthManagedUnit(unit: string) {
     return unit.trim().toUpperCase().includes("THANH");
+  }
+
+  private async resolveCategoryUnit(category: string, fallbackUnit?: string) {
+    const categoryCode = category.trim().toUpperCase();
+    const dictionary = await this.dictionaryModel.findOne({ code: "MATERIAL_CATEGORY" }).lean();
+    const categoryItem = dictionary?.items.find((item) => item.code.trim().toUpperCase() === categoryCode);
+    const unit = categoryItem?.unit?.trim().toUpperCase() || fallbackUnit?.trim().toUpperCase();
+
+    if (!unit) {
+      throw new BadRequestException("Vui long cau hinh don vi tinh cho nhom vat tu");
+    }
+
+    return unit;
+  }
+
+  private normalizeGlassType(value?: string) {
+    const normalized = value?.trim().toUpperCase();
+    return normalized && ["GLASS_8", "GLASS_10", "GLASS_12"].includes(normalized) ? normalized : "GLASS_12";
   }
 
   private buildMaterialCode(categoryCode: string, baseCode: string, colorCode?: string) {

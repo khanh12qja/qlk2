@@ -18,8 +18,17 @@ export class CreateMaterialDto {
   @IsString()
   colorName?: string;
 
+  @IsOptional()
+  @IsBoolean()
+  useGlass?: boolean;
+
+  @IsOptional()
+  @IsIn(["GLASS_8", "GLASS_10", "GLASS_12"])
+  glassType?: string;
+
+  @IsOptional()
   @IsString()
-  unit: string;
+  unit?: string;
 
   @IsBoolean()
   manageLength: boolean;

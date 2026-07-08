@@ -9,6 +9,10 @@ export class SaveDictionaryItemDto {
   label: string;
 
   @IsOptional()
+  @IsString()
+  unit?: string;
+
+  @IsOptional()
   @IsNumber()
   @Min(0)
   sortOrder?: number;

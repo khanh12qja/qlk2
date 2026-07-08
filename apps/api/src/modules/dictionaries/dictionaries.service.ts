@@ -25,6 +25,7 @@ export class DictionariesService {
       .map((item, index) => ({
         code: item.code.trim().toUpperCase(),
         label: item.label.trim(),
+        unit: item.unit?.trim().toUpperCase() || undefined,
         sortOrder: item.sortOrder ?? index + 1,
         status: item.status ?? "active"
       }));

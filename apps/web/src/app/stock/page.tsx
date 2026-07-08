@@ -2,13 +2,19 @@
 
 import { FormEvent, Fragment, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FormulaContract, GenerateBomResponseContract, MaterialContract } from "@erp/shared";
+import { DictionaryContract, FormulaContract, GenerateBomResponseContract, MaterialContract } from "@erp/shared";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { api } from "@/lib/api";
 
 type MaterialRecord = MaterialContract & { _id?: string };
 type FormulaRecord = FormulaContract & { _id?: string };
+
+const glassTypeOptions = [
+  { code: "GLASS_8", label: "Kính 8mm" },
+  { code: "GLASS_10", label: "Kính 10mm" },
+  { code: "GLASS_12", label: "Kính 12mm" }
+];
 
 type WarehouseRecord = {
   _id?: string;
@@ -48,6 +54,8 @@ type InventoryResponse = {
     materialName: string;
     colorName?: string;
     colorCode?: string;
+    useGlass?: boolean;
+    glassType?: string;
     warehouseId: string;
     warehouseCode: string;
     warehouseName: string;
@@ -62,6 +70,8 @@ type InventoryResponse = {
     materialName: string;
     colorName?: string;
     colorCode?: string;
+    useGlass?: boolean;
+    glassType?: string;
     warehouseId: string;
     warehouseCode: string;
     warehouseName: string;
@@ -137,6 +147,31 @@ type ProductCatalogResponse = {
   variants: ProductVariantCatalogItem[];
 };
 
+type CutDemandRow = {
+  id: string;
+  label: string;
+  length: string;
+  quantity: string;
+};
+
+type OptimizedCutBar = {
+  cuts: Array<{
+    label: string;
+    length: number;
+  }>;
+  usedLength: number;
+  leftoverLength: number;
+};
+
+type CutOptimizationResult = {
+  error?: string;
+  usedBars: OptimizedCutBar[];
+  unusedBars: number;
+  totalCutLength: number;
+  totalLeftover: number;
+  efficiency: number;
+};
+
 const emptyFormulaRequest: FormulaRequestRow = {
   formulaCode: "",
   variantCode: "",
@@ -144,13 +179,22 @@ const emptyFormulaRequest: FormulaRequestRow = {
   parameterValues: {}
 };
 
+const defaultCutDemandRows: CutDemandRow[] = [
+  { id: "cut-1700", label: "Thanh 1m7", length: "1700", quantity: "2" },
+  { id: "cut-1200", label: "Thanh 1m2", length: "1200", quantity: "2" },
+  { id: "cut-2100", label: "Thanh 2m1", length: "2100", quantity: "2" }
+];
+
 export default function StockPage() {
   const queryClient = useQueryClient();
   const [warehouseForm, setWarehouseForm] = useState({ code: "", name: "", address: "" });
   const [stockForm, setStockForm] = useState({ materialId: "", warehouseId: "", originalLength: "", remainingLength: "", quantity: "1" });
   const [checkForm, setCheckForm] = useState({ materialId: "", warehouseId: "", requiredLength: "", requiredQuantity: "1" });
+  const [cutOptimizerForm, setCutOptimizerForm] = useState({ stockLength: "3400", stockQuantity: "6" });
+  const [cutDemandRows, setCutDemandRows] = useState<CutDemandRow[]>(defaultCutDemandRows);
   const [formulaWarehouseId, setFormulaWarehouseId] = useState("");
-  const [productCatalogForm, setProductCatalogForm] = useState({ formulaCode: "", colorCode: "", openingCode: "", requestedHeight: "2100" });
+  const [productCatalogForm, setProductCatalogForm] = useState({ formulaCode: "", colorCode: "", openingCode: "", requestedWidth: "900", requestedHeight: "2100", glassType: "" });
+  const [inventoryGlassType, setInventoryGlassType] = useState("");
   const [formulaRequests, setFormulaRequests] = useState<FormulaRequestRow[]>([{ ...emptyFormulaRequest }]);
   const [message, setMessage] = useState<string | null>(null);
   const [showAddedDone, setShowAddedDone] = useState(false);
@@ -170,27 +214,20 @@ export default function StockPage() {
     queryFn: () => api.get<WarehouseRecord[]>("/warehouses")
   });
 
+  const { data: colorDictionary } = useQuery({
+    queryKey: ["dictionary", "MATERIAL_COLOR"],
+    queryFn: () => api.get<DictionaryContract>("/dictionaries/MATERIAL_COLOR")
+  });
+
   const { data: inventory } = useQuery({
-    queryKey: ["stock-inventory"],
-    queryFn: () => api.get<InventoryResponse>("/stock/inventory")
+    queryKey: ["stock-inventory", inventoryGlassType],
+    queryFn: () => api.get<InventoryResponse>(`/stock/inventory${inventoryGlassType ? `?glassType=${inventoryGlassType}` : ""}`)
   });
 
   const selectedStockMaterial = materials.find((item) => (item.id ?? item._id) === stockForm.materialId);
   const selectedCheckMaterial = materials.find((item) => (item.id ?? item._id) === checkForm.materialId);
   const selectedCatalogFormula = formulas.find((item) => item.code === normalizeCode(productCatalogForm.formulaCode) || item.code.includes(normalizeCode(productCatalogForm.formulaCode)));
-  const catalogColorOptions = selectedCatalogFormula
-    ? Array.from(
-        new Map(
-          selectedCatalogFormula.variants
-            .map((variant) => {
-              const code = readVariantParameter(variant.parameters, "MAU");
-              const label = resolveVariantOptionLabel(selectedCatalogFormula, "MAU", code);
-              return code ? [code, label ?? code] : null;
-            })
-            .filter((item): item is [string, string] => item !== null)
-        ).entries()
-      ).map(([code, label]) => ({ code, label }))
-    : [];
+  const colorOptions = colorDictionary?.items.filter((item) => item.status === "active").map((item) => ({ code: item.code, label: item.label })) ?? [];
   const catalogOpeningOptions = selectedCatalogFormula
     ? Array.from(
         new Map(
@@ -269,14 +306,6 @@ export default function StockPage() {
 
   const checkFormulaStock = useMutation({
     mutationFn: async (): Promise<FormulaStockCheckResponse> => {
-      const latestMaterials = await queryClient.fetchQuery({
-        queryKey: ["materials"],
-        queryFn: () => api.get<MaterialRecord[]>("/materials")
-      });
-      const latestFormulas = await queryClient.fetchQuery({
-        queryKey: ["formulas"],
-        queryFn: () => api.get<FormulaRecord[]>("/formulas")
-      });
       const activeRows = formulaRequests.filter((row) => row.formulaCode.trim());
       if (!formulaWarehouseId) {
         throw new Error("Chọn kho cần kiểm tra.");
@@ -285,122 +314,17 @@ export default function StockPage() {
         throw new Error("Nhập ít nhất một mã công thức.");
       }
 
-      const materialMap = new Map(latestMaterials.map((item) => [item.id ?? item._id ?? "", item]));
-      const aggregated = new Map<
-        string,
-        {
-          materialId: string;
-          materialCode: string;
-          materialName: string;
-          unit: string;
-          requiredQuantity: number;
-          requiredLength?: number;
-          sources: string[];
-        }
-      >();
-      const formulaSummaries: FormulaCheckResult[] = [];
-
-      for (const row of activeRows) {
-        const formula = latestFormulas.find((item) => item.code === normalizeCode(row.formulaCode));
-        if (!formula) {
-          throw new Error(`Không tìm thấy công thức ${row.formulaCode}.`);
-        }
-
-        const parameters = buildFormulaParameters(formula, row.parameterValues);
-        const orderQuantity = Number(row.orderQuantity || 1);
-        const targetVariants = row.variantCode
-          ? formula.variants.filter((variant) => variant.code === row.variantCode)
-          : formula.variants.length > 0
-            ? formula.variants.filter((variant) => matchesVariantWithParameters(variant.parameters, parameters))
-            : [undefined];
-
-        const variantsToRun = targetVariants.length > 0 ? targetVariants : [undefined];
-
-        for (const variant of variantsToRun) {
-          const bom = await api.post<GenerateBomResponseContract>(`/formulas/${formula.id ?? formula._id}/generate-bom`, {
-            variantCode: variant?.code,
-            parameters
-          });
-
-          formulaSummaries.push({
-            formulaCode: formula.code,
-            formulaName: formula.name,
-            orderQuantity,
-            variantCode: variant?.code
-          });
-
-          for (const line of bom.lines) {
-            const material = materialMap.get(line.materialId);
-            if (!material) {
-              continue;
-            }
-
-            const requiredQuantity = line.quantity * orderQuantity;
-            const requiredLength = material.manageLength ? line.length ?? material.standardLength : undefined;
-            const key = material.manageLength ? `${line.materialId}:${requiredLength ?? 0}` : line.materialId;
-            const sourceLabel = `${formula.code}${variant?.code ? ` (${variant.code})` : ""} x ${orderQuantity}`;
-            const current = aggregated.get(key);
-
-            if (current) {
-              current.requiredQuantity += requiredQuantity;
-              if (!current.sources.includes(sourceLabel)) {
-                current.sources.push(sourceLabel);
-              }
-            } else {
-              aggregated.set(key, {
-                materialId: line.materialId,
-                materialCode: material.code,
-                materialName: material.name,
-                unit: material.unit,
-                requiredQuantity,
-                requiredLength,
-                sources: [sourceLabel]
-              });
-            }
-          }
-        }
-      }
-
-      const materialChecks = await Promise.all(
-        Array.from(aggregated.values()).map(async (item) => {
-          if (item.requiredLength && item.requiredLength > 0) {
-            const suitable = await api.get<SuitableResponse>(
-              `/stock/suitable-bars?materialId=${item.materialId}&warehouseId=${formulaWarehouseId}&requiredLength=${item.requiredLength}&requiredQuantity=${item.requiredQuantity}`
-            );
-
-            return {
-              materialId: item.materialId,
-              materialCode: item.materialCode,
-              materialName: item.materialName,
-              unit: item.unit,
-              requiredQuantity: item.requiredQuantity,
-              requiredLength: item.requiredLength,
-              availableQuantity: suitable.suitableCount,
-              enough: suitable.enoughQuantity,
-              sources: item.sources,
-              cutNotice: buildCutNotice(suitable),
-              cutPlan: buildCutPlanRows(suitable)
-            };
-          }
-
-          const availability = await api.get<QuantityAvailability & { quantityBalance: number }>(
-            `/stock/availability?materialId=${item.materialId}&warehouseId=${formulaWarehouseId}`
-          );
-
-          return {
-            materialId: item.materialId,
-            materialCode: item.materialCode,
-            materialName: item.materialName,
-            unit: item.unit,
-            requiredQuantity: item.requiredQuantity,
-            availableQuantity: availability.quantityBalance,
-            enough: availability.quantityBalance >= item.requiredQuantity,
-            sources: item.sources
-          };
-        })
-      );
-
-      return { formulaSummaries, materialChecks };
+      return api.post<FormulaStockCheckResponse>("/stock/check-formulas", {
+        warehouseId: formulaWarehouseId,
+        glassType: productCatalogForm.glassType || undefined,
+        colorCode: productCatalogForm.colorCode || undefined,
+        requests: activeRows.map((row) => ({
+          formulaCode: row.formulaCode,
+          variantCode: row.variantCode || undefined,
+          orderQuantity: Number(row.orderQuantity || 1),
+          parameterValues: row.parameterValues
+        }))
+      });
     },
     onError: (error) => setMessage(error instanceof Error ? error.message : "Không kiểm tra được tồn theo công thức.")
   });
@@ -428,6 +352,10 @@ export default function StockPage() {
       if (!Number.isFinite(requestedHeight) || requestedHeight <= 0) {
         throw new Error("Nhập chiều cao cần cắt hợp lệ.");
       }
+      const requestedWidth = Number(productCatalogForm.requestedWidth);
+      if (!Number.isFinite(requestedWidth) || requestedWidth <= 0) {
+        throw new Error("Nhập chiều rộng cần cắt hợp lệ.");
+      }
 
       const formula = latestFormulas.find((item) => item.code === keyword || item.code.includes(keyword));
       if (!formula) {
@@ -435,74 +363,52 @@ export default function StockPage() {
       }
 
       const materialMap = new Map(latestMaterials.map((item) => [item.id ?? item._id ?? "", item]));
-      const filteredVariants = formula.variants.filter((variant) => {
-        const colorCode = readVariantParameter(variant.parameters, "MAU");
-        const openingCode = readVariantParameter(variant.parameters, "KIEU_MO");
+      const filteredVariants = formula.variants.length > 0
+        ? formula.variants.filter((variant) => {
+            const openingCode = readVariantParameter(variant.parameters, "KIEU_MO");
 
-        if (productCatalogForm.colorCode && colorCode !== productCatalogForm.colorCode) {
-          return false;
-        }
-        if (productCatalogForm.openingCode && openingCode !== productCatalogForm.openingCode) {
-          return false;
-        }
-        return true;
-      });
+            if (productCatalogForm.openingCode && openingCode !== productCatalogForm.openingCode) {
+              return false;
+            }
+            return true;
+          })
+        : [{ code: "", name: formula.name, parameters: {}, status: "active" }];
 
       const variants = await Promise.all(
         filteredVariants.map(async (variant) => {
-          const bom = await api.post<GenerateBomResponseContract>(`/formulas/${formula.id ?? formula._id}/generate-bom`, {
-            variantCode: variant.code,
-            parameters: {
-              CHIEU_CAO: requestedHeight
-            }
+          const stockCheck = await api.post<FormulaStockCheckResponse>("/stock/check-formulas", {
+            warehouseId: formulaWarehouseId,
+            colorCode: productCatalogForm.colorCode || undefined,
+            glassType: productCatalogForm.glassType || undefined,
+            requests: [
+              {
+                formulaCode: formula.code,
+                variantCode: variant.code || undefined,
+                orderQuantity: 1,
+                parameterValues: {
+                  CHIEU_RONG: String(requestedWidth),
+                  CHIEU_CAO: String(requestedHeight)
+                }
+              }
+            ]
           });
-
-          const lines = await Promise.all(
-            bom.lines.map(async (line) => {
-              const material = materialMap.get(line.materialId);
-              if (!material) {
-                throw new Error(`Không tìm thấy vật tư ${line.materialId}.`);
-              }
-
-              const requiredLength = material.manageLength ? line.length ?? material.standardLength : undefined;
-              if (material.manageLength && requiredLength) {
-                const suitable = await api.get<SuitableResponse>(
-                  `/stock/suitable-bars?materialId=${line.materialId}&warehouseId=${formulaWarehouseId}&requiredLength=${requiredLength}&requiredQuantity=1`
-                );
-
-                return {
-                  materialCode: material.code,
-                  materialName: material.name,
-                  unit: material.unit,
-                  requiredQuantity: line.quantity,
-                  requiredLength,
-                  availableQuantity: suitable.suitableCount,
-                  maxSets: Math.floor(suitable.suitableCount / line.quantity)
-                };
-              }
-
-              const availability = await api.get<QuantityAvailability>(
-                `/stock/availability?materialId=${line.materialId}&warehouseId=${formulaWarehouseId}`
-              );
-
-              return {
-                materialCode: material.code,
-                materialName: material.name,
-                unit: material.unit,
-                requiredQuantity: line.quantity,
-                availableQuantity: availability.quantityBalance,
-                maxSets: Math.floor(availability.quantityBalance / line.quantity)
-              };
-            })
-          );
+          const lines = stockCheck.materialChecks.map((line) => ({
+            materialCode: line.materialCode,
+            materialName: line.materialName,
+            unit: line.unit,
+            requiredQuantity: line.requiredQuantity,
+            requiredLength: line.requiredLength,
+            availableQuantity: line.availableQuantity,
+            maxSets: Math.floor(line.availableQuantity / line.requiredQuantity)
+          }));
 
           return {
             formulaId: formula.id ?? formula._id ?? "",
             formulaCode: formula.code,
             formulaName: formula.name,
-            variantCode: variant.code,
+            variantCode: variant.code || formula.code,
             variantName: variant.name,
-            colorCode: readVariantParameter(variant.parameters, "MAU"),
+            colorCode: productCatalogForm.colorCode || readVariantParameter(variant.parameters, "MAU"),
             openingCode: readVariantParameter(variant.parameters, "KIEU_MO"),
             requestedHeight,
             maxSets: lines.length > 0 ? Math.min(...lines.map((item) => item.maxSets)) : 0,
@@ -514,7 +420,7 @@ export default function StockPage() {
       return {
         formulaCode: formula.code,
         formulaName: formula.name,
-        totalVariants: formula.variants.length,
+        totalVariants: Math.max(formula.variants.length, 1),
         filteredVariants: variants.length,
         variants
       };
@@ -528,6 +434,7 @@ export default function StockPage() {
   const totalMaterialCount = materials.length;
   const totalFormulaCount = formulas.length;
   const cutNoticeRows = checkFormulaStock.data?.materialChecks.filter((item) => item.cutNotice) ?? [];
+  const cutOptimization = buildOptimizedCutPlan(cutOptimizerForm.stockLength, cutOptimizerForm.stockQuantity, cutDemandRows);
 
   return (
     <div className="space-y-6">
@@ -563,12 +470,18 @@ export default function StockPage() {
             browseProductCatalog.mutate();
           }}
         >
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-5">
             <SelectWarehouse value={formulaWarehouseId} warehouses={warehouses} onChange={setFormulaWarehouseId} />
             <TextInput
               label="Mã sản phẩm"
               value={productCatalogForm.formulaCode}
-              onChange={(value) => setProductCatalogForm((current) => ({ ...current, formulaCode: normalizeCode(value), colorCode: "", openingCode: "" }))}
+              onChange={(value) => setProductCatalogForm((current) => ({ ...current, formulaCode: normalizeCode(value), openingCode: "" }))}
+              required
+            />
+            <NumberInput
+              label="Chiều rộng cần cắt"
+              value={productCatalogForm.requestedWidth}
+              onChange={(value) => setProductCatalogForm((current) => ({ ...current, requestedWidth: value }))}
               required
             />
             <NumberInput
@@ -577,6 +490,7 @@ export default function StockPage() {
               onChange={(value) => setProductCatalogForm((current) => ({ ...current, requestedHeight: value }))}
               required
             />
+            <SelectGlassType value={productCatalogForm.glassType} onChange={(value) => setProductCatalogForm((current) => ({ ...current, glassType: value }))} includeAll />
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
@@ -588,7 +502,7 @@ export default function StockPage() {
                 className="h-10 w-full rounded-md border border-line px-3 text-sm"
               >
                 <option value="">Tất cả màu</option>
-                {catalogColorOptions.map((item) => (
+                {colorOptions.map((item) => (
                   <option key={item.code} value={item.code}>{item.label}</option>
                 ))}
               </select>
@@ -651,6 +565,7 @@ export default function StockPage() {
                   <div className="mt-2 flex flex-wrap gap-2 text-xs text-muted">
                     {variant.colorCode && <span className="rounded-md border border-line bg-[#f8faf7] px-2 py-1">{variant.colorCode}</span>}
                     {variant.openingCode && <span className="rounded-md border border-line bg-[#f8faf7] px-2 py-1">{variant.openingCode}</span>}
+                    {productCatalogForm.glassType && <span className="rounded-md border border-line bg-[#f8faf7] px-2 py-1">{formatGlassType(true, productCatalogForm.glassType)}</span>}
                   </div>
                   <div className="mt-4 rounded-lg bg-[#eef7f0] px-4 py-3 text-sm font-medium text-[#24543a]">
                     Tối đa tạo được {variant.maxSets} bộ
@@ -776,6 +691,8 @@ export default function StockPage() {
 
           <div className="grid gap-4 md:grid-cols-4">
             <SelectWarehouse value={formulaWarehouseId} warehouses={warehouses} onChange={setFormulaWarehouseId} />
+            <SelectColor value={productCatalogForm.colorCode} colors={colorOptions} onChange={(value) => setProductCatalogForm((current) => ({ ...current, colorCode: value }))} includeAll />
+            <SelectGlassType value={productCatalogForm.glassType} onChange={(value) => setProductCatalogForm((current) => ({ ...current, glassType: value }))} includeAll />
           </div>
 
           <div className="space-y-3">
@@ -1055,6 +972,147 @@ export default function StockPage() {
         )}
       </Card>
 
+      <Card className="border-line p-6">
+        <SectionHeading
+          eyebrow="Tối ưu cắt thanh"
+          title="Gom nhiều đoạn vào cùng một cây"
+          description="Nhập chiều dài thanh chuẩn và các đoạn cần cắt để phần mềm chọn cách dùng ít thanh nhất, giảm phần dư sau cắt."
+        />
+        <div className="mt-5 space-y-5">
+          <div className="grid gap-4 md:grid-cols-2">
+            <NumberInput
+              label="Chiều dài thanh chuẩn"
+              value={cutOptimizerForm.stockLength}
+              onChange={(value) => setCutOptimizerForm((current) => ({ ...current, stockLength: value }))}
+              required
+            />
+            <NumberInput
+              label="Số thanh đang có"
+              value={cutOptimizerForm.stockQuantity}
+              onChange={(value) => setCutOptimizerForm((current) => ({ ...current, stockQuantity: value }))}
+              required
+            />
+          </div>
+
+          <div className="overflow-hidden rounded-lg border border-line">
+            <table className="w-full border-collapse text-sm">
+              <thead className="bg-[#eef2ed] text-left text-muted">
+                <tr>
+                  <th className="px-4 py-3 font-medium">Tên đoạn</th>
+                  <th className="px-4 py-3 font-medium">Chiều dài cần cắt</th>
+                  <th className="px-4 py-3 font-medium">Số lượng</th>
+                  <th className="px-4 py-3 font-medium">Thao tác</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cutDemandRows.map((row) => (
+                  <tr key={row.id} className="border-t border-line">
+                    <td className="px-4 py-3">
+                      <input
+                        value={row.label}
+                        onChange={(event) => updateCutDemandRow(row.id, { label: event.target.value })}
+                        className="h-9 w-full rounded-md border border-line px-3 text-sm"
+                      />
+                    </td>
+                    <td className="px-4 py-3">
+                      <input
+                        value={row.length}
+                        type="number"
+                        min={1}
+                        onChange={(event) => updateCutDemandRow(row.id, { length: event.target.value })}
+                        className="h-9 w-full rounded-md border border-line px-3 text-sm"
+                      />
+                    </td>
+                    <td className="px-4 py-3">
+                      <input
+                        value={row.quantity}
+                        type="number"
+                        min={1}
+                        onChange={(event) => updateCutDemandRow(row.id, { quantity: event.target.value })}
+                        className="h-9 w-full rounded-md border border-line px-3 text-sm"
+                      />
+                    </td>
+                    <td className="px-4 py-3">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => setCutDemandRows((current) => current.filter((item) => item.id !== row.id))}
+                        disabled={cutDemandRows.length === 1}
+                      >
+                        Xóa
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() =>
+                setCutDemandRows((current) => [
+                  ...current,
+                  { id: `cut-${Date.now()}`, label: `Đoạn ${current.length + 1}`, length: "", quantity: "1" }
+                ])
+              }
+            >
+              Thêm đoạn cắt
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                setCutOptimizerForm({ stockLength: "3400", stockQuantity: "6" });
+                setCutDemandRows(defaultCutDemandRows);
+              }}
+            >
+              Dùng ví dụ 6 thanh 3m4
+            </Button>
+          </div>
+
+          {cutOptimization.error ? (
+            <InlineNotice message={cutOptimization.error} tone="error" />
+          ) : (
+            <div className="space-y-4">
+              <div className="grid gap-3 md:grid-cols-4">
+                <SummaryCard label="Thanh cần dùng" value={String(cutOptimization.usedBars.length)} note={`Còn nguyên ${cutOptimization.unusedBars} thanh`} />
+                <SummaryCard label="Tổng cần cắt" value={formatLengthForDisplay(cutOptimization.totalCutLength)} note="Tổng chiều dài thành phẩm" />
+                <SummaryCard label="Dư sau cắt" value={formatLengthForDisplay(cutOptimization.totalLeftover)} note="Tính trên thanh đã dùng" />
+                <SummaryCard label="Hiệu suất" value={`${cutOptimization.efficiency}%`} note="Thành phẩm / thanh đã dùng" />
+              </div>
+
+              <div className="overflow-hidden rounded-lg border border-line">
+                <table className="w-full border-collapse text-sm">
+                  <thead className="bg-[#eef2ed] text-left text-muted">
+                    <tr>
+                      <th className="px-4 py-3 font-medium">Thanh</th>
+                      <th className="px-4 py-3 font-medium">Cách cắt</th>
+                      <th className="px-4 py-3 font-medium">Đã dùng</th>
+                      <th className="px-4 py-3 font-medium">Còn dư</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cutOptimization.usedBars.map((bar, index) => (
+                      <tr key={`optimized-cut-${index}`} className="border-t border-line">
+                        <td className="px-4 py-3 font-medium text-ink">Thanh {index + 1}</td>
+                        <td className="px-4 py-3 text-muted">
+                          {bar.cuts.map((cut) => `${cut.label} (${formatLengthForDisplay(cut.length)})`).join(" + ")}
+                        </td>
+                        <td className="px-4 py-3 text-muted">{formatLengthForDisplay(bar.usedLength)}</td>
+                        <td className="px-4 py-3 text-muted">{bar.leftoverLength === 0 ? "Vừa đủ" : formatLengthForDisplay(bar.leftoverLength)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      </Card>
+
       <Card className="border-line p-5">
         <div className="flex flex-wrap items-center gap-3">
           {message && <InlineNotice message={message} tone={message.toLowerCase().includes("khong") || message.toLowerCase().includes("chua") ? "error" : "success"} />}
@@ -1079,6 +1137,9 @@ export default function StockPage() {
           title="Danh sách tồn kho"
           description="Tổng hợp tất cả dòng tồn theo thanh và theo số lượng để đội kho có thể quan sát nhanh."
         />
+        <div className="mt-4 max-w-xs">
+          <SelectGlassType value={inventoryGlassType} onChange={setInventoryGlassType} includeAll />
+        </div>
         <div className="mt-5 overflow-hidden rounded-lg border border-line">
           <table className="w-full border-collapse text-sm">
             <thead className="bg-[#eef2ed] text-left text-muted">
@@ -1086,6 +1147,7 @@ export default function StockPage() {
                 <th className="px-4 py-3 font-medium">Loại</th>
                 <th className="px-4 py-3 font-medium">Vật tư</th>
                 <th className="px-4 py-3 font-medium">Màu sắc</th>
+                <th className="px-4 py-3 font-medium">Kính</th>
                 <th className="px-4 py-3 font-medium">Kho</th>
                 <th className="px-4 py-3 font-medium">Dài ban đầu</th>
                 <th className="px-4 py-3 font-medium">Còn lại</th>
@@ -1098,6 +1160,7 @@ export default function StockPage() {
                   <td className="px-4 py-3 text-muted">Theo thanh</td>
                   <td className="px-4 py-3 text-ink">{item.materialCode} - {item.materialName}</td>
                   <td className="px-4 py-3 text-muted">{item.colorName ?? item.colorCode ?? "-"}</td>
+                  <td className="px-4 py-3 text-muted">{formatGlassType(item.useGlass, item.glassType)}</td>
                   <td className="px-4 py-3 text-muted">{item.warehouseCode} - {item.warehouseName}</td>
                   <td className="px-4 py-3 text-muted">{item.originalLength}</td>
                   <td className="px-4 py-3 text-muted">{item.remainingLength}</td>
@@ -1109,6 +1172,7 @@ export default function StockPage() {
                   <td className="px-4 py-3 text-muted">Theo số lượng</td>
                   <td className="px-4 py-3 text-ink">{item.materialCode} - {item.materialName}</td>
                   <td className="px-4 py-3 text-muted">{item.colorName ?? item.colorCode ?? "-"}</td>
+                  <td className="px-4 py-3 text-muted">{formatGlassType(item.useGlass, item.glassType)}</td>
                   <td className="px-4 py-3 text-muted">{item.warehouseCode} - {item.warehouseName}</td>
                   <td className="px-4 py-3 text-muted">-</td>
                   <td className="px-4 py-3 text-muted">-</td>
@@ -1117,7 +1181,7 @@ export default function StockPage() {
               ))}
               {(inventory?.barStocks.length ?? 0) === 0 && (inventory?.quantityStocks.length ?? 0) === 0 && (
                 <tr>
-                  <td className="px-4 py-4 text-muted" colSpan={7}>Chưa có dữ liệu tồn kho.</td>
+                  <td className="px-4 py-4 text-muted" colSpan={8}>Chưa có dữ liệu tồn kho.</td>
                 </tr>
               )}
             </tbody>
@@ -1218,6 +1282,10 @@ export default function StockPage() {
       return next;
     });
   }
+
+  function updateCutDemandRow(id: string, patch: Partial<CutDemandRow>) {
+    setCutDemandRows((current) => current.map((row) => (row.id === id ? { ...row, ...patch } : row)));
+  }
 }
 
 function TextInput({ label, value, onChange, required }: { label: string; value: string; onChange: (value: string) => void; required?: boolean }) {
@@ -1312,6 +1380,34 @@ function SelectWarehouse({ value, warehouses, onChange }: { value: string; wareh
   );
 }
 
+function SelectColor({ value, colors, onChange, includeAll }: { value: string; colors: Array<{ code: string; label: string }>; onChange: (value: string) => void; includeAll?: boolean }) {
+  return (
+    <label className="space-y-2">
+      <span className="text-sm text-muted">Màu sắc</span>
+      <select value={value} onChange={(event) => onChange(event.target.value)} className="h-10 w-full rounded-md border border-line px-3 text-sm" required={!includeAll}>
+        {includeAll && <option value="">Tất cả màu</option>}
+        {colors.map((item) => (
+          <option key={item.code} value={item.code}>{item.label}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function SelectGlassType({ value, onChange, includeAll }: { value: string; onChange: (value: string) => void; includeAll?: boolean }) {
+  return (
+    <label className="space-y-2">
+      <span className="text-sm text-muted">Kiểu kính</span>
+      <select value={value} onChange={(event) => onChange(event.target.value)} className="h-10 w-full rounded-md border border-line px-3 text-sm" required={!includeAll}>
+        {includeAll && <option value="">Tất cả kiểu kính</option>}
+        {glassTypeOptions.map((item) => (
+          <option key={item.code} value={item.code}>{item.label}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 function FormulaParameterInput({
   parameter,
   required,
@@ -1356,24 +1452,6 @@ function FormulaParameterInput({
       <input value={value} onChange={(event) => onChange(event.target.value)} className="h-10 w-full rounded-md border border-line px-3 text-sm" type={parameter.type === "number" ? "number" : "text"} required={required} />
     </label>
   );
-}
-
-function buildFormulaParameters(formula: FormulaRecord, values: Record<string, string>) {
-  return Object.fromEntries(
-    formula.parameters
-      .filter((parameter) => values[parameter.code] !== undefined && values[parameter.code] !== "")
-      .map((parameter) => [parameter.code, parseParameterValue(parameter.type, values[parameter.code])])
-  );
-}
-
-function parseParameterValue(type: FormulaContract["parameters"][number]["type"], value: string) {
-  if (type === "number") {
-    return Number(value);
-  }
-  if (type === "boolean") {
-    return value === "true";
-  }
-  return value;
 }
 
 function readVariantParameter(parameters: Record<string, string | number | boolean>, key: string) {
@@ -1435,19 +1513,6 @@ function isVariantBackedParameter(formula: FormulaRecord, parameterCode: string)
   return formula.variants.some((variant) => variant.parameters[parameterCode] !== undefined);
 }
 
-function matchesVariantWithParameters(
-  variantParameters: Record<string, string | number | boolean>,
-  runtimeParameters: Record<string, string | number | boolean>
-) {
-  return Object.entries(runtimeParameters).every(([key, value]) => {
-    if (variantParameters[key] === undefined) {
-      return true;
-    }
-
-    return String(variantParameters[key]) === String(value);
-  });
-}
-
 function matchesVariantWithInputValues(
   variantParameters: Record<string, string | number | boolean>,
   inputValues: Record<string, string>
@@ -1507,73 +1572,182 @@ function buildProductCatalogSummaries(data: ProductCatalogResponse, formula?: Pi
   return Array.from(grouped.values());
 }
 
-function buildCutNotice(suitable: SuitableResponse) {
-  if (suitable.requiredLength <= 0 || suitable.requiredQuantity <= 0) {
-    return undefined;
+function buildOptimizedCutPlan(stockLengthValue: string, stockQuantityValue: string, rows: CutDemandRow[]): CutOptimizationResult {
+  const stockLength = Number(stockLengthValue);
+  const stockQuantity = Number(stockQuantityValue);
+
+  if (!Number.isFinite(stockLength) || stockLength <= 0) {
+    return emptyCutOptimization("Nhập chiều dài thanh chuẩn hợp lệ.");
+  }
+  if (!Number.isFinite(stockQuantity) || stockQuantity <= 0) {
+    return emptyCutOptimization("Nhập số thanh đang có hợp lệ.");
   }
 
-  const targetQuantity = suitable.enoughQuantity
-    ? suitable.requiredQuantity
-    : Math.min(suitable.requiredQuantity, suitable.suitableCount);
-  const selectedBars = selectBarsForCut(suitable.bars, targetQuantity);
-  if (selectedBars.length === 0) {
-    return undefined;
+  const pieces = rows.flatMap((row) => {
+    const length = Number(row.length);
+    const quantity = Number(row.quantity);
+    if (!row.length && !row.quantity) {
+      return [];
+    }
+    if (!Number.isFinite(length) || length <= 0 || !Number.isFinite(quantity) || quantity <= 0) {
+      return [{ label: row.label || "Đoạn cắt", length: Number.NaN }];
+    }
+
+    return Array.from({ length: quantity }, () => ({
+      label: row.label || `Đoạn ${formatLengthForDisplay(length)}`,
+      length
+    }));
+  });
+
+  if (pieces.length === 0) {
+    return emptyCutOptimization("Nhập ít nhất một đoạn cần cắt.");
+  }
+  if (pieces.some((piece) => !Number.isFinite(piece.length))) {
+    return emptyCutOptimization("Kiểm tra lại chiều dài và số lượng của từng đoạn cần cắt.");
+  }
+  if (pieces.some((piece) => piece.length > stockLength)) {
+    return emptyCutOptimization("Có đoạn dài hơn thanh chuẩn nên không thể cắt.");
   }
 
-  const totalLeftover = selectedBars.reduce((sum, length) => sum + Math.max(length - suitable.requiredLength, 0), 0);
-  const sample = selectedBars
-    .slice(0, 3)
-    .map((length) => `${length} -> du ${formatLengthAsCentimeters(length - suitable.requiredLength)}`)
-    .join('; ');
-  const moreCount = selectedBars.length - Math.min(selectedBars.length, 3);
-
-  if (!suitable.enoughQuantity) {
-    return `Chưa đủ số thanh. Hiện có ${selectedBars.length}/${suitable.requiredQuantity} thanh có thể cắt, dự kiến cắt bỏ ${formatLengthAsCentimeters(totalLeftover)}. ${sample}${moreCount > 0 ? `; và ${moreCount} thanh khác` : ""}`;
+  const totalCutLength = pieces.reduce((sum, piece) => sum + piece.length, 0);
+  if (totalCutLength > stockLength * stockQuantity) {
+    return emptyCutOptimization("Tổng chiều dài cần cắt lớn hơn số thanh đang có.");
   }
 
-  if (totalLeftover <= 0) {
-    return "Cat vua du, khong du.";
+  const sortedPieces = [...pieces].sort((left, right) => right.length - left.length);
+  let bestBars: OptimizedCutBar[] | null = null;
+
+  function search(index: number, bars: OptimizedCutBar[]) {
+    if (bestBars && bars.length > bestBars.length) {
+      return;
+    }
+
+    if (index >= sortedPieces.length) {
+      const candidate = bars.map((bar) => ({
+        cuts: [...bar.cuts],
+        usedLength: bar.usedLength,
+        leftoverLength: stockLength - bar.usedLength
+      }));
+      if (!bestBars || isBetterCutPlan(candidate, bestBars)) {
+        bestBars = candidate;
+      }
+      return;
+    }
+
+    const piece = sortedPieces[index];
+    const triedLeftovers = new Set<number>();
+
+    for (const bar of bars) {
+      const leftoverBeforeCut = stockLength - bar.usedLength;
+      if (leftoverBeforeCut < piece.length || triedLeftovers.has(leftoverBeforeCut)) {
+        continue;
+      }
+
+      triedLeftovers.add(leftoverBeforeCut);
+      bar.cuts.push(piece);
+      bar.usedLength += piece.length;
+      search(index + 1, bars);
+      bar.usedLength -= piece.length;
+      bar.cuts.pop();
+    }
+
+    if (bars.length < stockQuantity && (!bestBars || bars.length + 1 <= bestBars.length)) {
+      bars.push({
+        cuts: [piece],
+        usedLength: piece.length,
+        leftoverLength: stockLength - piece.length
+      });
+      search(index + 1, bars);
+      bars.pop();
+    }
   }
 
-  return `Đủ nhờ cắt thanh dài hơn. Cần cắt bỏ tổng ${formatLengthAsCentimeters(totalLeftover)} trên ${selectedBars.length} thanh. ${sample}${moreCount > 0 ? `; và ${moreCount} thanh khác` : ""}`;
+  search(0, []);
+
+  const usedBars: OptimizedCutBar[] = bestBars ?? [];
+  const totalLeftover = usedBars.reduce((sum, bar) => sum + bar.leftoverLength, 0);
+  const usedCapacity = stockLength * usedBars.length;
+  const efficiency = usedCapacity > 0 ? Math.round((totalCutLength / usedCapacity) * 1000) / 10 : 0;
+
+  return {
+    error: undefined,
+    usedBars,
+    unusedBars: Math.max(stockQuantity - usedBars.length, 0),
+    totalCutLength,
+    totalLeftover,
+    efficiency
+  };
 }
 
-function buildCutPlanRows(suitable: SuitableResponse) {
-  if (suitable.requiredLength <= 0 || suitable.requiredQuantity <= 0) {
-    return [];
-  }
-
-  const targetQuantity = suitable.enoughQuantity
-    ? suitable.requiredQuantity
-    : Math.min(suitable.requiredQuantity, suitable.suitableCount);
-
-  return selectBarsForCut(suitable.bars, targetQuantity).map((sourceLength) => ({
-    sourceLength,
-    cutLength: suitable.requiredLength,
-    leftoverLength: Math.max(sourceLength - suitable.requiredLength, 0)
-  }));
+function emptyCutOptimization(error: string): CutOptimizationResult {
+  return {
+    error,
+    usedBars: [] as OptimizedCutBar[],
+    unusedBars: 0,
+    totalCutLength: 0,
+    totalLeftover: 0,
+    efficiency: 0
+  };
 }
 
-function selectBarsForCut(bars: SuitableBar[], requiredQuantity: number) {
-  const selected: number[] = [];
-
-  for (const bar of bars) {
-    const count = Math.max(bar.quantity ?? 0, 0);
-    for (let index = 0; index < count && selected.length < requiredQuantity; index += 1) {
-      selected.push(bar.remainingLength);
-    }
-    if (selected.length >= requiredQuantity) {
-      break;
-    }
+function isBetterCutPlan(candidate: OptimizedCutBar[], current: OptimizedCutBar[]) {
+  if (candidate.length !== current.length) {
+    return candidate.length < current.length;
   }
 
-  return selected;
+  const candidateLargestWaste = Math.max(...candidate.map((bar) => bar.leftoverLength));
+  const currentLargestWaste = Math.max(...current.map((bar) => bar.leftoverLength));
+  if (candidateLargestWaste !== currentLargestWaste) {
+    return candidateLargestWaste < currentLargestWaste;
+  }
+
+  const candidateUsedLengths = candidate.map((bar) => bar.usedLength).sort((left, right) => right - left).join(",");
+  const currentUsedLengths = current.map((bar) => bar.usedLength).sort((left, right) => right - left).join(",");
+  return candidateUsedLengths > currentUsedLengths;
+}
+
+function formatLengthForDisplay(length: number) {
+  if (!Number.isFinite(length)) {
+    return "-";
+  }
+
+  if (length >= 1000) {
+    const meters = length / 1000;
+    return `${Number.isInteger(meters) ? meters.toFixed(0) : meters.toFixed(2).replace(/0+$/, "").replace(/\.$/, "")}m`;
+  }
+
+  return `${length}mm`;
 }
 
 function formatLengthAsCentimeters(length: number) {
   const centimeters = length / 10;
   const rounded = Number.isInteger(centimeters) ? centimeters.toFixed(0) : centimeters.toFixed(1);
   return `${rounded} cm`;
+}
+
+function formatGlassType(useGlass?: boolean, value?: string) {
+  if (!useGlass) {
+    return "Không áp dụng";
+  }
+
+  return glassTypeOptions.find((item) => item.code === value)?.label ?? "Kính 12mm";
+}
+
+function supportsGlassType(useGlass: boolean | undefined, materialGlassType?: string, selectedGlassType?: string) {
+  if (!selectedGlassType) {
+    return true;
+  }
+  if (!useGlass) {
+    return true;
+  }
+
+  const rank: Record<string, number> = {
+    GLASS_8: 1,
+    GLASS_10: 2,
+    GLASS_12: 3
+  };
+
+  return (rank[materialGlassType ?? "GLASS_12"] ?? rank.GLASS_12) >= rank[selectedGlassType];
 }
 
 function normalizeCode(value: string) {

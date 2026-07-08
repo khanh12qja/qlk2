@@ -12,6 +12,9 @@ export class DictionaryItem {
   @Prop({ required: true, trim: true })
   label: string;
 
+  @Prop({ trim: true, uppercase: true })
+  unit?: string;
+
   @Prop({ required: true, default: 0 })
   sortOrder: number;
 

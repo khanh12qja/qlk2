@@ -6,8 +6,8 @@ if %errorlevel% neq 0 (
   exit /b 1
 )
 
-netsh advfirewall firewall add rule name="qlkhokeyen2 web 3005" dir=in action=allow protocol=TCP localport=3005
-netsh advfirewall firewall add rule name="qlkhokeyen2 api 4005" dir=in action=allow protocol=TCP localport=4005
+netsh advfirewall firewall add rule name="qlk2 web 3015" dir=in action=allow protocol=TCP localport=3015
+netsh advfirewall firewall add rule name="qlk2 api 4015" dir=in action=allow protocol=TCP localport=4015
 
-echo Da mo firewall cho web 3005 va API 4005.
+echo Da mo firewall cho web 3015 va API 4015.
 pause

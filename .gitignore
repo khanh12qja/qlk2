@@ -11,3 +11,7 @@ coverage
 dev.api.pid
 dev.mongo-keeper.pid
 dev.web.pid
+*.tsbuildinfo
+dev.job.id
+.pnpm-store/
+tmp_import_formula.xlsx

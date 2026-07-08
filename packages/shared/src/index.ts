@@ -1,6 +1,7 @@
 export type EntityStatus = "active" | "inactive";
 
 export type MaterialCategory = string;
+export type GlassType = "GLASS_8" | "GLASS_10" | "GLASS_12";
 
 export interface MaterialContract {
   id: string;
@@ -10,6 +11,8 @@ export interface MaterialContract {
   category: MaterialCategory;
   colorCode?: string;
   colorName?: string;
+  useGlass?: boolean;
+  glassType?: GlassType;
   unit: string;
   manageLength: boolean;
   standardLength?: number;
@@ -19,6 +22,7 @@ export interface MaterialContract {
 export interface DictionaryItemContract {
   code: string;
   label: string;
+  unit?: string;
   sortOrder: number;
   status: EntityStatus;
 }

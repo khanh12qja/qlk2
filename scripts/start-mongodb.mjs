@@ -4,14 +4,25 @@ import { resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
 const mongoRoot = resolve(root, ".local/mongodb/mongodb-win32-x86_64-windows-8.0.26");
-const dbPath = resolve(root, ".local/mongodb/data/db");
-const logPath = resolve(root, ".local/mongodb/logs/mongod.log");
+const dbPath = resolve(root, ".local/mongodb/data/dev-27019");
+const logPath = resolve(root, ".local/mongodb/logs/mongod-27019.log");
 
 mkdirSync(dbPath, { recursive: true });
 mkdirSync(resolve(root, ".local/mongodb/logs"), { recursive: true });
 
 const out = openSync(logPath, "a");
-const mongod = spawn(resolve(mongoRoot, "bin/mongod.exe"), ["--dbpath", dbPath, "--bind_ip", "127.0.0.1", "--port", "27017"], {
+const mongod = spawn(resolve(mongoRoot, "bin/mongod.exe"), [
+  "--dbpath",
+  dbPath,
+  "--bind_ip",
+  "127.0.0.1",
+  "--port",
+  "27019",
+  "--wiredTigerCacheSizeGB",
+  "0.25",
+  "--setParameter",
+  "diagnosticDataCollectionEnabled=false"
+], {
   cwd: root,
   detached: true,
   windowsHide: true,

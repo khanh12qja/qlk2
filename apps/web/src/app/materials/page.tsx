@@ -16,7 +16,8 @@ type MaterialFormState = {
   name: string;
   category: string;
   colorCode: string;
-  unit: string;
+  useGlass: boolean;
+  glassType: string;
   standardLength: string;
   status: "active" | "inactive";
 };
@@ -31,10 +32,17 @@ const emptyForm: MaterialFormState = {
   name: "",
   category: "",
   colorCode: "",
-  unit: "",
+  useGlass: false,
+  glassType: "GLASS_12",
   standardLength: "",
   status: "active"
 };
+
+const glassTypeOptions = [
+  { code: "GLASS_8", label: "Kính 8mm" },
+  { code: "GLASS_10", label: "Kính 10mm" },
+  { code: "GLASS_12", label: "Kính 12mm" }
+];
 
 export default function MaterialsPage() {
   const queryClient = useQueryClient();
@@ -57,17 +65,14 @@ export default function MaterialsPage() {
     queryFn: () => api.get<DictionaryContract>("/dictionaries/MATERIAL_COLOR")
   });
 
-  const { data: unitDictionary } = useQuery({
-    queryKey: ["dictionary", "MATERIAL_UNIT"],
-    queryFn: () => api.get<DictionaryContract>("/dictionaries/MATERIAL_UNIT")
-  });
-
   const categories = categoryDictionary?.items.filter((item) => item.status === "active") ?? [];
   const colors = colorDictionary?.items.filter((item) => item.status === "active") ?? [];
-  const units = unitDictionary?.items.filter((item) => item.status === "active") ?? [];
+  const selectedCategory = categories.find((item) => item.code === form.category);
   const selectedColor = colors.find((item) => item.code === form.colorCode);
-  const lengthManaged = isLengthManagedUnit(form.unit);
+  const selectedUnit = selectedCategory?.unit ?? "";
+  const lengthManaged = isLengthManagedUnit(selectedUnit);
   const generatedCode = buildMaterialCode(form.category, form.baseCode, form.colorCode);
+  const categoryMissingUnit = Boolean(form.category && !selectedUnit);
 
   const saveMaterial = useMutation({
     mutationFn: () => {
@@ -77,7 +82,8 @@ export default function MaterialsPage() {
         category: form.category,
         colorCode: form.colorCode || undefined,
         colorName: selectedColor?.label,
-        unit: form.unit,
+        useGlass: form.useGlass,
+        glassType: form.glassType,
         manageLength: lengthManaged,
         standardLength: lengthManaged ? Number(form.standardLength) : undefined,
         status: form.status
@@ -113,7 +119,8 @@ export default function MaterialsPage() {
       name: material.name,
       category: material.category,
       colorCode: material.colorCode ?? "",
-      unit: material.unit,
+      useGlass: material.useGlass ?? Boolean(material.glassType),
+      glassType: material.glassType ?? "GLASS_12",
       standardLength: material.standardLength ? String(material.standardLength) : "",
       status: material.status
     });
@@ -129,9 +136,9 @@ export default function MaterialsPage() {
     <div className="space-y-5">
       <div>
         <h1 className="text-2xl font-semibold text-ink">Vat tu</h1>
-        <p className="mt-1 text-sm text-muted">Don vi se tu quyet dinh cach quan ly ton: tinh theo thanh thi nhap met, tinh theo cai thi chi nhap so luong.</p>
+        <p className="mt-1 text-sm text-muted">Don vi tinh duoc cau hinh trong nhom vat tu. Nhom tinh theo THANH se quan ly ton theo chieu dai.</p>
         <a className="mt-3 inline-flex h-10 items-center rounded-md border border-line bg-white px-4 text-sm font-medium text-ink hover:bg-[#f7f8f5]" href="/settings">
-          Quan ly nhom, mau sac, don vi
+          Quan ly nhom va mau sac
         </a>
       </div>
 
@@ -157,7 +164,18 @@ export default function MaterialsPage() {
 
             <label className="space-y-2">
               <span className="text-sm text-muted">Nhom vat tu</span>
-              <select value={form.category} onChange={(event) => setForm((current) => ({ ...current, category: event.target.value }))} className="h-10 w-full rounded-md border border-line bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-steel" required>
+              <select
+                value={form.category}
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    category: event.target.value,
+                    standardLength: isLengthManagedUnit(categories.find((item) => item.code === event.target.value)?.unit ?? "") ? current.standardLength : ""
+                  }))
+                }
+                className="h-10 w-full rounded-md border border-line bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-steel"
+                required
+              >
                 <option value="">Chon nhom vat tu</option>
                 {categories.map((item) => (
                   <option key={item.code} value={item.code}>{item.label}</option>
@@ -175,26 +193,31 @@ export default function MaterialsPage() {
               </select>
             </label>
 
-            <label className="space-y-2">
+            <div className="space-y-2">
               <span className="text-sm text-muted">Don vi</span>
-              <select
-                value={form.unit}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    unit: event.target.value,
-                    standardLength: isLengthManagedUnit(event.target.value) ? current.standardLength : ""
-                  }))
-                }
-                className="h-10 w-full rounded-md border border-line bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-steel"
-                required
-              >
-                <option value="">Chon don vi</option>
-                {units.map((item) => (
+              <div className={`flex h-10 items-center rounded-md border px-3 text-sm ${categoryMissingUnit ? "border-[#ead3d3] bg-[#fff3f2] text-[#8a2f2b]" : "border-line bg-[#f7f8f5] text-ink"}`}>
+                {form.category ? selectedUnit || "Chua cau hinh don vi cho nhom nay" : "Chon nhom vat tu de lay don vi"}
+              </div>
+            </div>
+
+            <label className="space-y-2">
+              <span className="text-sm text-muted">Áp dụng kính</span>
+              <select value={form.useGlass ? "yes" : "no"} onChange={(event) => setForm((current) => ({ ...current, useGlass: event.target.value === "yes" }))} className="h-10 w-full rounded-md border border-line bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-steel">
+                <option value="no">Không áp dụng</option>
+                <option value="yes">Có áp dụng</option>
+              </select>
+            </label>
+
+            {form.useGlass && (
+              <label className="space-y-2">
+                <span className="text-sm text-muted">Sử dụng kính</span>
+                <select value={form.glassType} onChange={(event) => setForm((current) => ({ ...current, glassType: event.target.value }))} className="h-10 w-full rounded-md border border-line bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-steel" required>
+                {glassTypeOptions.map((item) => (
                   <option key={item.code} value={item.code}>{item.label}</option>
                 ))}
               </select>
             </label>
+            )}
 
             <div className="space-y-2">
               <span className="text-sm text-muted">Cach quan ly ton</span>
@@ -222,7 +245,7 @@ export default function MaterialsPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-4">
-            <Button type="submit" disabled={saveMaterial.isPending}>
+            <Button type="submit" disabled={saveMaterial.isPending || categoryMissingUnit}>
               {saveMaterial.isPending ? "Dang luu..." : editingId ? "Cap nhat vat tu" : "Them vat tu"}
             </Button>
             {editingId && <Button type="button" variant="secondary" onClick={cancelEdit}>Huy sua</Button>}
@@ -250,6 +273,8 @@ export default function MaterialsPage() {
               <th className="px-4 py-3 font-medium">Ten vat tu</th>
               <th className="px-4 py-3 font-medium">Nhom</th>
               <th className="px-4 py-3 font-medium">Mau sac</th>
+              <th className="px-4 py-3 font-medium">Áp dụng kính</th>
+              <th className="px-4 py-3 font-medium">Kính</th>
               <th className="px-4 py-3 font-medium">Don vi</th>
               <th className="px-4 py-3 font-medium">Cach quan ly ton</th>
               <th className="px-4 py-3 font-medium">Trang thai</th>
@@ -259,12 +284,12 @@ export default function MaterialsPage() {
           <tbody>
             {isLoading && (
               <tr>
-                <td className="px-4 py-4 text-muted" colSpan={8}>Dang tai...</td>
+                <td className="px-4 py-4 text-muted" colSpan={10}>Dang tai...</td>
               </tr>
             )}
             {!isLoading && data.length === 0 && (
               <tr>
-                <td className="px-4 py-4 text-muted" colSpan={8}>Chua co vat tu.</td>
+                <td className="px-4 py-4 text-muted" colSpan={10}>Chua co vat tu.</td>
               </tr>
             )}
             {data.map((material) => (
@@ -273,6 +298,8 @@ export default function MaterialsPage() {
                 <td className="px-4 py-3 text-ink">{material.name}</td>
                 <td className="px-4 py-3 text-muted">{material.category}</td>
                 <td className="px-4 py-3 text-muted">{material.colorName ?? material.colorCode ?? "-"}</td>
+                <td className="px-4 py-3 text-muted">{material.useGlass ? "Có" : "Không"}</td>
+                <td className="px-4 py-3 text-muted">{formatGlassType(material.useGlass, material.glassType)}</td>
                 <td className="px-4 py-3 text-muted">{material.unit}</td>
                 <td className="px-4 py-3 text-muted">{material.manageLength ? `Theo thanh ${material.standardLength ?? ""}` : "Theo so luong"}</td>
                 <td className="px-4 py-3 text-muted">{material.status === "active" ? "Dang dung" : "Ngung dung"}</td>
@@ -290,6 +317,14 @@ export default function MaterialsPage() {
 
 function isLengthManagedUnit(unit: string) {
   return unit.trim().toUpperCase().includes("THANH");
+}
+
+function formatGlassType(useGlass?: boolean, value?: string) {
+  if (!useGlass) {
+    return "Không áp dụng";
+  }
+
+  return glassTypeOptions.find((item) => item.code === value)?.label ?? "Kính 12mm";
 }
 
 function compactCode(value: string) {

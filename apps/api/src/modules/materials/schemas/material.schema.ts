@@ -24,6 +24,12 @@ export class Material extends BaseSchema {
   @Prop({ trim: true })
   colorName?: string;
 
+  @Prop({ required: true, default: false, index: true })
+  useGlass: boolean;
+
+  @Prop({ trim: true, uppercase: true, enum: ["GLASS_8", "GLASS_10", "GLASS_12"], default: "GLASS_12", index: true })
+  glassType?: string;
+
   @Prop({ required: true, trim: true })
   unit: string;
 

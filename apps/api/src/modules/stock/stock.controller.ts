@@ -1,4 +1,5 @@
 import { Body, Controller, Get, Post, Query } from "@nestjs/common";
+import { CheckFormulasStockDto } from "./dto/check-formulas-stock.dto";
 import { CreateStockBarDto } from "./dto/create-stock-bar.dto";
 import { CreateStockQuantityDto } from "./dto/create-stock-quantity.dto";
 import { StockService } from "./stock.service";
@@ -33,7 +34,12 @@ export class StockController {
   }
 
   @Get("inventory")
-  listInventory() {
-    return this.stockService.listInventory();
+  listInventory(@Query("glassType") glassType?: string) {
+    return this.stockService.listInventory(glassType);
+  }
+
+  @Post("check-formulas")
+  checkFormulas(@Body() dto: CheckFormulasStockDto) {
+    return this.stockService.checkFormulas(dto);
   }
 }
